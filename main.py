@@ -16,66 +16,105 @@ class InvoiceResponse(BaseModel):
     date: str
 
 
-@app.post("/extract", response_model=InvoiceResponse)
-def extract(req: InvoiceRequest):
-
-    text = req.text
-
-    if not text.strip():
-        return InvoiceResponse(
-            vendor="",
-            amount=0,
-            currency="USD",
-            date=""
-        )
-
-    vendor = ""
-
+def extract_vendor(text: str):
     patterns = [
-        r"Vendor[:\s]+(.+)",
-        r"Supplier[:\s]+(.+)",
-        r"From[:\s]+(.+)"
+        r"Vendor\s*:\s*(.+)",
+        r"Supplier\s*:\s*(.+)",
+        r"From\s*:\s*(.+)",
+        r"Billed By\s*:\s*(.+)",
+        r"Issued By\s*:\s*(.+)",
     ]
 
     for p in patterns:
         m = re.search(p, text, re.IGNORECASE)
         if m:
-            vendor = m.group(1).split("\n")[0].strip()
-            break
+            return m.group(1).split("\n")[0].strip()
 
-    amount = 0
+    return ""
 
-    amount_patterns = [
-r"Total\s*Due[:\s\$]*([0-9]+(?:\.[0-9]+)?)",
-    r"Amount\s*Due[:\s\$]*([0-9]+(?:\.[0-9]+)?)",
-    r"Grand\s*Total[:\s\$]*([0-9]+(?:\.[0-9]+)?)",
-    r"Invoice\s*Total[:\s\$]*([0-9]+(?:\.[0-9]+)?)",
-    r"Balance\s*Due[:\s\$]*([0-9]+(?:\.[0-9]+)?)",
-    r"Total[:\s\$]*([0-9]+(?:\.[0-9]+)?)"
-]
-    for p in amount_patterns:
+
+def extract_currency(text: str):
+    m = re.search(r"\b(USD|EUR|GBP)\b", text, re.IGNORECASE)
+    if m:
+        return m.group(1).upper()
+
+    symbols = {
+        "$": "USD",
+        "€": "EUR",
+        "£": "GBP",
+    }
+
+    for s, c in symbols.items():
+        if s in text:
+            return c
+
+    return "USD"
+
+
+def extract_date(text: str):
+    m = re.search(r"(2026-\d{2}-\d{2})", text)
+    if m:
+        return m.group(1)
+
+    return ""
+
+
+def extract_amount(text: str):
+
+    priority_patterns = [
+
+        r"Total\s*Due\s*[:\-]?\s*(?:USD|EUR|GBP)?\s*[$€£]?\s*([0-9]+(?:\.[0-9]+)?)",
+
+        r"Amount\s*Due\s*[:\-]?\s*(?:USD|EUR|GBP)?\s*[$€£]?\s*([0-9]+(?:\.[0-9]+)?)",
+
+        r"Grand\s*Total\s*[:\-]?\s*(?:USD|EUR|GBP)?\s*[$€£]?\s*([0-9]+(?:\.[0-9]+)?)",
+
+        r"Invoice\s*Total\s*[:\-]?\s*(?:USD|EUR|GBP)?\s*[$€£]?\s*([0-9]+(?:\.[0-9]+)?)",
+
+        r"Balance\s*Due\s*[:\-]?\s*(?:USD|EUR|GBP)?\s*[$€£]?\s*([0-9]+(?:\.[0-9]+)?)",
+
+        r"Total\s*Payable\s*[:\-]?\s*(?:USD|EUR|GBP)?\s*[$€£]?\s*([0-9]+(?:\.[0-9]+)?)",
+
+        r"Total\s*[:\-]?\s*(?:USD|EUR|GBP)?\s*[$€£]?\s*([0-9]+(?:\.[0-9]+)?)",
+    ]
+
+    for p in priority_patterns:
         m = re.search(p, text, re.IGNORECASE)
         if m:
-            amount = float(m.group(1))
-            break
+            return float(m.group(1))
 
-    currency = "USD"
+    # fallback
+    nums = re.findall(r"\d+\.\d{2}", text)
 
-    m = re.search(r"\b(USD|EUR|GBP)\b", text, re.IGNORECASE)
+    if nums:
+        values = [float(x) for x in nums]
+        return max(values)
 
-    if m:
-        currency = m.group(1).upper()
+    nums = re.findall(r"\d+", text)
 
-    date = ""
+    if nums:
+        values = [float(x) for x in nums]
+        return max(values)
 
-    m = re.search(r"(2026-\d\d-\d\d)", text)
+    return 0.0
 
-    if m:
-        date = m.group(1)
+
+@app.post("/extract", response_model=InvoiceResponse)
+def extract(req: InvoiceRequest):
+
+    text = req.text.strip()
+
+    if text == "":
+        return InvoiceResponse(
+            vendor="",
+            amount=0.0,
+            currency="USD",
+            date=""
+        )
 
     return InvoiceResponse(
-        vendor=vendor,
-        amount=amount,
-        currency=currency,
-        date=date
+        vendor=extract_vendor(text),
+        amount=extract_amount(text),
+        currency=extract_currency(text),
+        date=extract_date(text),
     )
