@@ -46,12 +46,13 @@ def extract(req: InvoiceRequest):
     amount = 0
 
     amount_patterns = [
-        r"Total\s*Due[:\s]*([0-9]+(?:\.[0-9]+)?)",
-        r"Amount[:\s]*([0-9]+(?:\.[0-9]+)?)",
-        r"Total[:\s]*([0-9]+(?:\.[0-9]+)?)",
-        r"([0-9]+(?:\.[0-9]+)?)"
-    ]
-
+r"Total\s*Due[:\s\$]*([0-9]+(?:\.[0-9]+)?)",
+    r"Amount\s*Due[:\s\$]*([0-9]+(?:\.[0-9]+)?)",
+    r"Grand\s*Total[:\s\$]*([0-9]+(?:\.[0-9]+)?)",
+    r"Invoice\s*Total[:\s\$]*([0-9]+(?:\.[0-9]+)?)",
+    r"Balance\s*Due[:\s\$]*([0-9]+(?:\.[0-9]+)?)",
+    r"Total[:\s\$]*([0-9]+(?:\.[0-9]+)?)"
+]
     for p in amount_patterns:
         m = re.search(p, text, re.IGNORECASE)
         if m:
